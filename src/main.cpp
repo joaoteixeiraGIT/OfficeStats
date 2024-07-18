@@ -14,12 +14,15 @@ const int mqtt_port = 1883;
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 
-const int relay = 26;
+const int RELAY_PIN = 26;
 
+
+//Functions
 void init_wifi(void);
 void init_mqtt(void);
 void reconnect(void);
 void getDataBME(void);
+void callback(char* topic, byte* payload, unsigned int length);
 
 void setup() {
   // put your setup code here, to run once:
@@ -27,7 +30,7 @@ void setup() {
   init_wifi();
   init_mqtt();
 
-  pinMode(relay, OUTPUT);
+  pinMode(RELAY_PIN, OUTPUT);
 
   // Initialize the BME680 sensor
   if (!BME680.begin()) {
@@ -40,6 +43,8 @@ void setup() {
   BME680.setOversampling(TemperatureSensor, Oversample16);
   BME680.setOversampling(HumiditySensor, Oversample16);
   BME680.setOversampling(PressureSensor, Oversample16);
+
+  client.setCallback(callback);
 }
 
 void loop() {
@@ -47,20 +52,8 @@ void loop() {
     reconnect();
   }
   client.loop();
-  
-  digitalWrite(relay, HIGH);
-  
-  getDataBME(); 
-  // digitalWrite(relay, HIGH);
-  // Serial.println("Relay OFF");
-  
-  delay(5000);
-
-  getDataBME();
-  // digitalWrite(relay, LOW);
-  // Serial.println("Relay ON");
-
-  delay(5000);
+  getDataBME();   
+  delay(10000);
 }
 
 void init_wifi(void){
@@ -87,7 +80,9 @@ void reconnect() {
     if (client.connect("ESP32Client")) {
       Serial.println("connected");
       // Once connected, publish an announcement...
-      client.publish("feed_my_plant/status", "Connected");
+      client.publish("office_stats/status", "Connected");
+      // Resubscribe to the topic after reconnecting
+      client.subscribe("office_stats/relay");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -112,7 +107,30 @@ void getDataBME(void){
   Serial.print("Pressure:");
   Serial.println(pressure / 100);
 
-  client.publish("feed_my_plant/bme_readings/temp", String(temp / 100).c_str());
-  client.publish("feed_my_plant/bme_readings/hum", String(humidity / 1000).c_str());
-  client.publish("feed_my_plant/bme_readings/press", String(pressure / 100).c_str());
+  client.publish("office_stats/bme_readings/temp", String(temp / 100).c_str());
+  client.publish("office_stats/bme_readings/hum", String(humidity / 1000).c_str());
+  client.publish("office_stats/bme_readings/press", String(pressure / 100).c_str());
+}
+
+void callback(char* topic, byte* payload, unsigned int length)
+{
+    Serial.print("Message arrived [");
+    Serial.print(topic);
+    Serial.print("] ");
+    for (int i = 0; i < length; i++)
+        Serial.print((char)payload[i]);
+    Serial.println();
+
+    if (!strcmp(topic, "office_stats/relay"))
+    {
+        if ((char)payload[0] == '1'){
+            digitalWrite(RELAY_PIN, LOW);
+            Serial.println("Relay On");
+        }
+        else{
+            digitalWrite(RELAY_PIN, HIGH);
+            Serial.println("Relay OFF");          
+        }
+    }
+    
 }
